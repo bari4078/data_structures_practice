@@ -44,35 +44,7 @@ int prevPrime(int n) {
     return n;
 }
 
-ull hash1(string key) {
-    ull hash = 0;
-    ull p = 31;
-    ull m = 1e9 + 9; 
-    
-    ull p_pow = 1;
-    for (char c : key) {
-        hash = (hash + (c - 'a' + 1) * p_pow) % m;
-        p_pow = (p_pow * p) % m;
-    }
-    return hash;
-}
 
-ull hash2(string key) {
-    ull hash = 5381;
-    for (char c : key) {
-        hash = ((hash << 5) + hash) + c; 
-    }
-    return hash;
-}
-
-
-ull auxHash(string key) {
-    ull sum = 0;
-    for (char c : key) {
-        sum += c;
-    }
-    return (sum == 0) ? 1 : sum; 
-}
 
 template<typename K, typename V>
 struct HashNode{
@@ -98,6 +70,8 @@ class HashTable{
 
         vector<HashNode<K,V> *> probeTable;
 
+        using Hasher = std::hash<K>;
+        Hasher hasher;
         int currentSize;
         int elementCount;
         int initialSize;
@@ -111,6 +85,19 @@ class HashTable{
 
         HashNode<K,V>* DELETED;
 
+        ull hash1(const K &key) {
+            return (ull) hasher(key);
+        }
+
+        ull hash2(const K &key) {
+            uint64_t x = (uint64_t) hasher(key);
+            x += 0x9e3779b97f4a7c15ULL;
+            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+            x = x ^ (x >> 31);
+            return (ull) x;
+        }
+
         ull getHash(K key){
             if(hashFunctionChoice == 1){
                 return hash1(key);
@@ -118,6 +105,10 @@ class HashTable{
             return hash2(key);
         }
         
+        ull auxHash(const K &key) {
+            
+            return 1 + (hash1(key) % (currentSize-1));
+        }
 
         void rehash(int newSize){
             vector< list<HashNode<K,V> > > oldChain = chainTable;
@@ -245,7 +236,6 @@ class HashTable{
                     else if(probeTable[index] != DELETED){
                         totalCollisions++;
                     }
-
                 }
             }
             elementCount++;
@@ -339,7 +329,200 @@ class HashTable{
             return false;
         }
 
+    void printAllNodes(){
+        if(method == CHAINING){
+            for(auto lists: chainTable){
+                if(!lists.empty()){
+                    for(auto nodes: lists){
+                        cout<<"(key: "<<nodes.key<<", value: "<<nodes.value<<") ";
+                    }
+                }
+            }
+        }
+        for(auto nodes: probeTable){
+            if(nodes != nullptr && nodes != DELETED){
+                cout<<"(key: "<<nodes->key<<", value: "<<nodes->value<<") ";
+            }
+        }
+        cout<<endl;
+    }
+    vector<HashNode<K,V> *> * getProbeTable(){
+        return &probeTable;
+    }
 
+    vector< list< HashNode<K,V> > >* getChainTable(){
+        return &chainTable;
+    }
+
+    void printEntireTable(){
+        cout << "---- HashTable ----\n";
+
+        if(method == CHAINING){
+            for(int i = 0; i < currentSize; i++){
+                cout << "[" << i << "] : ";
+                for(auto &node : chainTable[i]){
+                    cout << "(" << node.key << "," << node.value << ") ";
+                }
+                cout << "\n";
+            }
+        }
+        else{
+            for(int i = 0; i < currentSize; i++){
+                cout << "[" << i << "] : ";
+                if(probeTable[i] == nullptr){
+                    cout << "NULL";
+                }
+                else if(probeTable[i] == DELETED){
+                    cout << "DELETED";
+                }
+                else{
+                    cout << "(" << probeTable[i]->key 
+                            << "," << probeTable[i]->value << ")";
+                }
+                cout << "\n";
+            }
+        }
+    }
+
+    vector<HashNode<K,V>> getAllNodes(){
+        vector<HashNode<K,V>> result;
+
+        if(method == CHAINING){
+            for(int i = 0; i < currentSize; i++){
+                for(auto &node : chainTable[i]){
+                    result.push_back(node);
+                }
+            }
+        }
+        else{
+            for(int i = 0; i < currentSize; i++){
+                if(probeTable[i] != nullptr && probeTable[i] != DELETED){
+                    result.push_back(*probeTable[i]);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    bool contains(K key){
+        int hits;
+        return search(key,hits) != -1;
+    }
+
+    int getElementCount(){
+        return elementCount;
+    }
+
+    void printStats(){
+        cout << "Size: " << currentSize << endl;
+        cout << "Elements: " << elementCount << endl;
+        cout << "Load Factor: " << getLoadFactor() << endl;
+        cout << "Collisions: " << totalCollisions << endl;
+    }
+
+    
+
+    vector<K> getAllKeys(){
+
+        vector<K> keys;
+
+        if(method == CHAINING){
+
+            for(int i = 0; i < currentSize; i++){
+
+                for(auto &node : chainTable[i]){
+                    keys.push_back(node.key);
+                }
+
+            }
+
+        }
+        else{
+
+            for(int i = 0; i < currentSize; i++){
+
+                if(probeTable[i] != nullptr && probeTable[i] != DELETED){
+                    keys.push_back(probeTable[i]->key);
+                }
+
+            }
+
+        }
+
+        return keys;
+    }
+
+    vector<V> getAllValues(){
+
+        vector<V> values;
+
+        if(method == CHAINING){
+
+            for(int i = 0; i < currentSize; i++){
+
+                for(auto &node : chainTable[i]){
+                    values.push_back(node.value);
+                }
+
+            }
+
+        }
+        else{
+
+            for(int i = 0; i < currentSize; i++){
+
+                if(probeTable[i] != nullptr && probeTable[i] != DELETED){
+                    values.push_back(probeTable[i]->value);
+                }
+
+            }
+
+        }
+
+        return values;
+    }
+    double averageChainLength(){
+
+        if(method != CHAINING) return 0;
+
+        int nonEmptyChains = 0;
+        int totalNodes = 0;
+
+        for(int i = 0; i < currentSize; i++){
+
+            if(!chainTable[i].empty()){
+                nonEmptyChains++;
+                totalNodes += chainTable[i].size();
+            }
+
+        }
+
+        if(nonEmptyChains == 0) return 0;
+
+        return (double) totalNodes / nonEmptyChains;
+    }
+    
+    double averageProbeLength(){
+
+        if(method == CHAINING) return 0;
+
+        vector<K> keys = getAllKeys();
+
+        int totalHits = 0;
+
+        for(auto &key : keys){
+            int hits = 0;
+            search(key, hits);
+            totalHits += hits;
+        }
+
+        if(keys.size() == 0) return 0;
+
+        return (double) totalHits / keys.size();
+    }
+
+    
 };
 
 string randomWord(int l){

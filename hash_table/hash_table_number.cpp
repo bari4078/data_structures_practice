@@ -44,35 +44,7 @@ int prevPrime(int n) {
     return n;
 }
 
-ull hash1(string key) {
-    ull hash = 0;
-    ull p = 31;
-    ull m = 1e9 + 9; 
-    
-    ull p_pow = 1;
-    for (char c : key) {
-        hash = (hash + (c - 'a' + 1) * p_pow) % m;
-        p_pow = (p_pow * p) % m;
-    }
-    return hash;
-}
 
-ull hash2(string key) {
-    ull hash = 5381;
-    for (char c : key) {
-        hash = ((hash << 5) + hash) + c; 
-    }
-    return hash;
-}
-
-
-ull auxHash(string key) {
-    ull sum = 0;
-    for (char c : key) {
-        sum += c;
-    }
-    return (sum == 0) ? 1 : sum; 
-}
 
 template<typename K, typename V>
 struct HashNode{
@@ -98,6 +70,8 @@ class HashTable{
 
         vector<HashNode<K,V> *> probeTable;
 
+        using Hasher = std::hash<K>;
+        Hasher hasher;
         int currentSize;
         int elementCount;
         int initialSize;
@@ -111,6 +85,19 @@ class HashTable{
 
         HashNode<K,V>* DELETED;
 
+        ull hash1(const K &key) {
+            return (ull) hasher(key);
+        }
+
+        ull hash2(const K &key) {
+            uint64_t x = (uint64_t) hasher(key);
+            x += 0x9e3779b97f4a7c15ULL;
+            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+            x = x ^ (x >> 31);
+            return (ull) x;
+        }
+
         ull getHash(K key){
             if(hashFunctionChoice == 1){
                 return hash1(key);
@@ -118,6 +105,10 @@ class HashTable{
             return hash2(key);
         }
         
+        ull auxHash(const K &key) {
+            
+            return 1 + (hash1(key) % (currentSize-1));
+        }
 
         void rehash(int newSize){
             vector< list<HashNode<K,V> > > oldChain = chainTable;
@@ -245,7 +236,6 @@ class HashTable{
                     else if(probeTable[index] != DELETED){
                         totalCollisions++;
                     }
-
                 }
             }
             elementCount++;
@@ -350,23 +340,23 @@ string randomWord(int l){
     return word;
 }
 
+ull randomNumber(int l){
+    return ((ull)rand() % nextPrime(100000));
+}
+
 
 int main() {
-    //int n;
-    //cout<<"Enter word length\n(has to be greater than 3 to generate 10000 unique words): ";
-    //cin>>n;
+    vector<ull> nums;
+    HashTable<ull,int> uniqueChecker(nextPrime(20001),CHAINING,1);
 
-    vector<string> words;
-    HashTable<string,int> uniqueChecker(nextPrime(20001),CHAINING,1);
-
-    while(words.size() < 10000){
-        string word = randomWord(WORD_SIZE);
+    while(nums.size() < 10000){
+        ull num = randomNumber(10);
         int temp;
-        int k = uniqueChecker.search(word,temp);
+        int k = uniqueChecker.search(num,temp);
 
         if(k == -1){
-            uniqueChecker.insert(word,words.size()+1);
-            words.push_back(word);
+            uniqueChecker.insert(num,nums.size()+1);
+            nums.push_back(num);
         }
 
     }
@@ -374,7 +364,7 @@ int main() {
     vector<int> searchIdx;
 
     for(int i=0;i<1000;i++){
-        searchIdx.push_back(rand() % words.size());
+        searchIdx.push_back(rand() % nums.size());
     }
 
 
@@ -387,16 +377,16 @@ int main() {
         else if(i == 2) cout<<"||--------Custom Probing-----||\n";
 
         for(int hChoice = 1; hChoice <=2; hChoice++){
-            HashTable<string,int> demoTable(INITIAL_TABLE_SIZE,methods[i],hChoice);
+            HashTable<ull,int> demoTable(INITIAL_TABLE_SIZE,methods[i],hChoice);
             int count = 0;
-            for(auto &w:words){
+            for(auto &w:nums){
                 demoTable.insert(w,count + 1);
             }
 
             int totalHits = 0;
             for(auto idx:searchIdx){
                 int hits = 0;
-                demoTable.search(words[ idx ],hits);
+                demoTable.search(nums[ idx ],hits);
                 totalHits += hits;
             }
 

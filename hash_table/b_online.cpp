@@ -44,35 +44,7 @@ int prevPrime(int n) {
     return n;
 }
 
-ull hash1(string key) {
-    ull hash = 0;
-    ull p = 31;
-    ull m = 1e9 + 9; 
-    
-    ull p_pow = 1;
-    for (char c : key) {
-        hash = (hash + (c - 'a' + 1) * p_pow) % m;
-        p_pow = (p_pow * p) % m;
-    }
-    return hash;
-}
 
-ull hash2(string key) {
-    ull hash = 5381;
-    for (char c : key) {
-        hash = ((hash << 5) + hash) + c; 
-    }
-    return hash;
-}
-
-
-ull auxHash(string key) {
-    ull sum = 0;
-    for (char c : key) {
-        sum += c;
-    }
-    return (sum == 0) ? 1 : sum; 
-}
 
 template<typename K, typename V>
 struct HashNode{
@@ -98,6 +70,8 @@ class HashTable{
 
         vector<HashNode<K,V> *> probeTable;
 
+        using Hasher = std::hash<K>;
+        Hasher hasher;
         int currentSize;
         int elementCount;
         int initialSize;
@@ -111,6 +85,19 @@ class HashTable{
 
         HashNode<K,V>* DELETED;
 
+        ull hash1(const K &key) {
+            return (ull) hasher(key);
+        }
+
+        ull hash2(const K &key) {
+            uint64_t x = (uint64_t) hasher(key);
+            x += 0x9e3779b97f4a7c15ULL;
+            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+            x = x ^ (x >> 31);
+            return (ull) x;
+        }
+
         ull getHash(K key){
             if(hashFunctionChoice == 1){
                 return hash1(key);
@@ -118,6 +105,10 @@ class HashTable{
             return hash2(key);
         }
         
+        ull auxHash(const K &key) {
+            
+            return 1 + (hash1(key) % (currentSize-1));
+        }
 
         void rehash(int newSize){
             vector< list<HashNode<K,V> > > oldChain = chainTable;
@@ -245,7 +236,6 @@ class HashTable{
                     else if(probeTable[index] != DELETED){
                         totalCollisions++;
                     }
-
                 }
             }
             elementCount++;
@@ -339,7 +329,39 @@ class HashTable{
             return false;
         }
 
+    int printProbeSequence(K key){
+        int hits = 0;
 
+        if(method == CHAINING) return -1;
+        ull h = getHash(key);
+        ull aux = auxHash(key);
+        int prev_index = -1;
+        for(int i=0;i<currentSize;i++){
+            int index;
+            if(method == DOUBLE_HASHING){
+                index = (h + i*aux)%currentSize;
+            }
+            else{
+                index = (
+                            h + (ull) C1 * i * aux + (ull) C2 * i * i
+                        ) % currentSize;
+            }
+
+            if(i>0) cout<<" -> ";
+            cout<<index;
+
+            if(probeTable[index] == nullptr){
+                cout<<"\n";
+                return -1;
+            }
+            else if(probeTable[index] != DELETED && probeTable[index]->key == key){
+                cout<<"\n";
+                return index;
+            }
+            
+        }
+        return -1;
+    }
 };
 
 string randomWord(int l){
@@ -404,6 +426,10 @@ int main() {
             
             cout<<methodName<<"||   Collisions: "<<demoTable.getTotalCollsions()
                 <<"  Hits: "<<  (double)    totalHits/1000   <<"\n";
+
+            for(int p = 0; p < 49; p++){
+                demoTable.printProbeSequence(randomWord(10));
+            }
         }
         cout<<endl;
     }

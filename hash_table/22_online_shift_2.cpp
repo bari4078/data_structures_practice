@@ -1,4 +1,7 @@
 #include <bits/stdc++.h>
+using namespace std;
+
+#include <bits/stdc++.h>
 
 using namespace std;
 using ull = unsigned long long;
@@ -44,35 +47,7 @@ int prevPrime(int n) {
     return n;
 }
 
-ull hash1(string key) {
-    ull hash = 0;
-    ull p = 31;
-    ull m = 1e9 + 9; 
-    
-    ull p_pow = 1;
-    for (char c : key) {
-        hash = (hash + (c - 'a' + 1) * p_pow) % m;
-        p_pow = (p_pow * p) % m;
-    }
-    return hash;
-}
 
-ull hash2(string key) {
-    ull hash = 5381;
-    for (char c : key) {
-        hash = ((hash << 5) + hash) + c; 
-    }
-    return hash;
-}
-
-
-ull auxHash(string key) {
-    ull sum = 0;
-    for (char c : key) {
-        sum += c;
-    }
-    return (sum == 0) ? 1 : sum; 
-}
 
 template<typename K, typename V>
 struct HashNode{
@@ -98,6 +73,8 @@ class HashTable{
 
         vector<HashNode<K,V> *> probeTable;
 
+        using Hasher = std::hash<K>;
+        Hasher hasher;
         int currentSize;
         int elementCount;
         int initialSize;
@@ -111,6 +88,19 @@ class HashTable{
 
         HashNode<K,V>* DELETED;
 
+        ull hash1(const K &key) {
+            return (ull) hasher(key);
+        }
+
+        ull hash2(const K &key) {
+            uint64_t x = (uint64_t) hasher(key);
+            x += 0x9e3779b97f4a7c15ULL;
+            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+            x = x ^ (x >> 31);
+            return (ull) x;
+        }
+
         ull getHash(K key){
             if(hashFunctionChoice == 1){
                 return hash1(key);
@@ -118,6 +108,10 @@ class HashTable{
             return hash2(key);
         }
         
+        ull auxHash(const K &key) {
+            
+            return 1 + (hash1(key) % (currentSize-1));
+        }
 
         void rehash(int newSize){
             vector< list<HashNode<K,V> > > oldChain = chainTable;
@@ -245,7 +239,6 @@ class HashTable{
                     else if(probeTable[index] != DELETED){
                         totalCollisions++;
                     }
-
                 }
             }
             elementCount++;
@@ -253,7 +246,7 @@ class HashTable{
             return true;
         }
 
-        int search(K key, int &totalHits){
+        V* search(K key, int &totalHits){
             int hits = 0;
 
             if(method == CHAINING){
@@ -263,7 +256,7 @@ class HashTable{
                     hits++;
                     if(nodes.key == key){
                         totalHits = hits;
-                        return hits;
+                        return &nodes.value;
                     }
                 }
             }
@@ -286,12 +279,12 @@ class HashTable{
                     if(probeTable[index] == nullptr) break;
                     if(probeTable[index] != DELETED && probeTable[index]->key == key){
                         totalHits = hits;
-                        return hits;
+                        return &probeTable[index]->value;
                     }
                 }
             }
             totalHits = hits;
-            return -1;
+            return nullptr;
         }
 
         bool remove(K key){
@@ -339,7 +332,12 @@ class HashTable{
             return false;
         }
 
-
+        void traverseTable(){
+            for(auto node: probeTable){
+                if(node != nullptr && node != DELETED)
+                    cout<<"("<<node->key<<", "<<node->value<<")\n";
+            }
+        }
 };
 
 string randomWord(int l){
@@ -351,62 +349,108 @@ string randomWord(int l){
 }
 
 
-int main() {
-    //int n;
-    //cout<<"Enter word length\n(has to be greater than 3 to generate 10000 unique words): ";
-    //cin>>n;
+class permissionDB{
+private:
+    HashTable<int, HashTable<int,string>*>* upperTable;
+    int currentSize;
 
-    vector<string> words;
-    HashTable<string,int> uniqueChecker(nextPrime(20001),CHAINING,1);
+public:
+    permissionDB(int size){
+        upperTable = new HashTable<int,HashTable<int,string>*>(size,CUSTOM_PROBING,1);
+        currentSize = size;
+    }
 
-    while(words.size() < 10000){
-        string word = randomWord(WORD_SIZE);
+    void insert(int group_id,int user_id,string permission){
+        
+        upperTable->insert(group_id,new HashTable<int,string>(currentSize,CUSTOM_PROBING,2));
         int temp;
-        int k = uniqueChecker.search(word,temp);
+        auto pointerTolowerTable = upperTable->search(group_id,temp);
+        auto lowerTable = *pointerTolowerTable;
+        lowerTable->insert(user_id,permission);
+    }
 
-        if(k == -1){
-            uniqueChecker.insert(word,words.size()+1);
-            words.push_back(word);
+    void search(int group_id,int user_id){
+        int temp;
+        auto pointerTolowerTable = upperTable->search(group_id,temp);
+        auto lowerTable = *pointerTolowerTable;
+        if(lowerTable == nullptr){
+            cout<<"Group not found\n";
+            return;
         }
 
+        string* permission = lowerTable->search(user_id,temp);
+
+        if(permission== nullptr){
+            cout<<"User not found in group "<<group_id<<"\n";
+            return;
+        }
+
+        cout<<"("<<user_id<<", "<<*permission<<")\n";
     }
 
-    vector<int> searchIdx;
+    void search(int group_id){
+        int temp;
+        auto pointerTolowerTable = upperTable->search(group_id,temp);
+        auto lowerTable = *pointerTolowerTable;
+        if(lowerTable == nullptr){
+            cout<<"Group not found\n";
+            return;
+        }
 
-    for(int i=0;i<1000;i++){
-        searchIdx.push_back(rand() % words.size());
+        lowerTable->traverseTable();
+        return;
     }
 
+    void remove(int group_id,int user_id){
+        int temp;
+        auto pointerTolowerTable = upperTable->search(group_id,temp);
+        auto lowerTable = *pointerTolowerTable;
+        if(lowerTable == nullptr){
+            cout<<"Group not found\n";
+            return;
+        }
+        string perm = *lowerTable->search(user_id,temp);
+        bool succ = lowerTable->remove(user_id);
+        if(succ){
+            cout<<"("<<user_id<<", "<<perm<<")\n";
+        }
+        else cout<<"User not found in group "<<group_id<<"\n";
+        return;
+    }
+};
 
+int main(){
+    int n,q;
+    cin>>n>>q;
+    permissionDB pdb(n);
+    while(q--){
+        string cmd;
+        cin>>cmd;
 
-    vector<CollisionMethod> methods = {CHAINING,DOUBLE_HASHING,CUSTOM_PROBING};
+        if(cmd == "INSERT"){
+            int g_id,u_id;
+            string perm;
+            cin>>g_id>>u_id>>perm;
+            pdb.insert(g_id,u_id,perm);
+        }
+        else if(cmd == "SEARCH"){
+            string line;
+            getline(cin,line);
 
-    for(int i=0;i<3;i++){
-        if(i == 0)      cout<<"||--------Chaining-----------||\n";
-        else if(i == 1) cout<<"||--------Double Hashing-----||\n";
-        else if(i == 2) cout<<"||--------Custom Probing-----||\n";
-
-        for(int hChoice = 1; hChoice <=2; hChoice++){
-            HashTable<string,int> demoTable(INITIAL_TABLE_SIZE,methods[i],hChoice);
-            int count = 0;
-            for(auto &w:words){
-                demoTable.insert(w,count + 1);
-            }
-
-            int totalHits = 0;
-            for(auto idx:searchIdx){
-                int hits = 0;
-                demoTable.search(words[ idx ],hits);
-                totalHits += hits;
-            }
-
-            string methodName = (hChoice == 1) ? "Hash1" : "Hash2";
+            stringstream ss(line);
+            int g_id,u_id;
             
-            cout<<methodName<<"||   Collisions: "<<demoTable.getTotalCollsions()
-                <<"  Hits: "<<  (double)    totalHits/1000   <<"\n";
+            if(ss>>g_id>>u_id){
+                pdb.search(g_id,u_id);
+            }
+            else{
+                pdb.search(g_id);
+            }
         }
-        cout<<endl;
+        else if(cmd == "DELETE"){
+            int g_id,u_id;
+            cin>>g_id>>u_id;
+            pdb.remove(g_id,u_id);
+        }
     }
-
-    return 0;
 }

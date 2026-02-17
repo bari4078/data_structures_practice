@@ -44,35 +44,7 @@ int prevPrime(int n) {
     return n;
 }
 
-ull hash1(string key) {
-    ull hash = 0;
-    ull p = 31;
-    ull m = 1e9 + 9; 
-    
-    ull p_pow = 1;
-    for (char c : key) {
-        hash = (hash + (c - 'a' + 1) * p_pow) % m;
-        p_pow = (p_pow * p) % m;
-    }
-    return hash;
-}
 
-ull hash2(string key) {
-    ull hash = 5381;
-    for (char c : key) {
-        hash = ((hash << 5) + hash) + c; 
-    }
-    return hash;
-}
-
-
-ull auxHash(string key) {
-    ull sum = 0;
-    for (char c : key) {
-        sum += c;
-    }
-    return (sum == 0) ? 1 : sum; 
-}
 
 template<typename K, typename V>
 struct HashNode{
@@ -98,6 +70,8 @@ class HashTable{
 
         vector<HashNode<K,V> *> probeTable;
 
+        using Hasher = std::hash<K>;
+        Hasher hasher;
         int currentSize;
         int elementCount;
         int initialSize;
@@ -111,6 +85,19 @@ class HashTable{
 
         HashNode<K,V>* DELETED;
 
+        ull hash1(const K &key) {
+            return (ull) hasher(key);
+        }
+
+        ull hash2(const K &key) {
+            uint64_t x = (uint64_t) hasher(key);
+            x += 0x9e3779b97f4a7c15ULL;
+            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+            x = x ^ (x >> 31);
+            return (ull) x;
+        }
+
         ull getHash(K key){
             if(hashFunctionChoice == 1){
                 return hash1(key);
@@ -118,6 +105,10 @@ class HashTable{
             return hash2(key);
         }
         
+        ull auxHash(const K &key) {
+            
+            return 1 + (hash1(key) % (currentSize-1));
+        }
 
         void rehash(int newSize){
             vector< list<HashNode<K,V> > > oldChain = chainTable;
@@ -245,7 +236,6 @@ class HashTable{
                     else if(probeTable[index] != DELETED){
                         totalCollisions++;
                     }
-
                 }
             }
             elementCount++;
@@ -339,7 +329,27 @@ class HashTable{
             return false;
         }
 
+        vector<HashNode<K,V> *> * getProbeTable(){
+            return &probeTable;
+        }
 
+        vector< list< HashNode<K,V> > >* getChainTable(){
+            return &chainTable;
+        }
+        
+        void printAllNodes(){
+            if(method == CHAINING) return;
+            for(auto nodes: probeTable){
+                if(nodes != nullptr && nodes != DELETED){
+                    cout<<nodes->value<<" ";
+                }
+            }
+            cout<<endl;
+        }
+
+        HashNode<K,V>* getDeleted(){
+            return DELETED;
+        }
 };
 
 string randomWord(int l){
@@ -351,62 +361,82 @@ string randomWord(int l){
 }
 
 
-int main() {
-    //int n;
-    //cout<<"Enter word length\n(has to be greater than 3 to generate 10000 unique words): ";
-    //cin>>n;
+void union_hash(HashTable<int,int> &table1, HashTable<int,int> &table2){
+    HashTable<int,int> u_table(INITIAL_TABLE_SIZE,CUSTOM_PROBING,1);
 
-    vector<string> words;
-    HashTable<string,int> uniqueChecker(nextPrime(20001),CHAINING,1);
-
-    while(words.size() < 10000){
-        string word = randomWord(WORD_SIZE);
-        int temp;
-        int k = uniqueChecker.search(word,temp);
-
-        if(k == -1){
-            uniqueChecker.insert(word,words.size()+1);
-            words.push_back(word);
-        }
-
+    vector<HashNode<int,int> *>* firstTable = table1.getProbeTable();
+    int temp;
+    
+    for(auto nodes: *firstTable){
+        if(nodes == nullptr || nodes == table1.getDeleted()) continue;
+        if(table1.search(nodes->key,temp) != -1)
+            u_table.insert(nodes->key,nodes->value);
     }
 
-    vector<int> searchIdx;
+    vector<HashNode<int,int> *>* secondTable = table2.getProbeTable();
 
-    for(int i=0;i<1000;i++){
-        searchIdx.push_back(rand() % words.size());
+    for(auto nodes: *secondTable){
+        if(nodes == nullptr || nodes == table2.getDeleted()) continue;
+
+        if(table2.search(nodes->key,temp) != -1)
+            u_table.insert(nodes->key,nodes->value);
+    }
+    cout<<"Union: ";
+    u_table.printAllNodes();
+}
+
+void intersect_hash(HashTable<int,int> &table1, HashTable<int,int> &table2){
+    HashTable<int,int> u_table(INITIAL_TABLE_SIZE,CUSTOM_PROBING,1);
+
+    vector<HashNode<int,int> *>* firstTable = table1.getProbeTable();
+    vector<HashNode<int,int> *>* secondTable = table2.getProbeTable();
+    int temp;
+    for(auto nodes: *firstTable){
+        if(nodes == nullptr || nodes == table1.getDeleted()) continue;
+        if(table2.search(nodes->key,temp) != -1 && table1.search(nodes->key,temp) != -1)
+            u_table.insert(nodes->key,nodes->value);
+    }
+    cout<<"Intersection: ";
+    u_table.printAllNodes();
+}
+
+void diff_hash(HashTable<int,int> &table1, HashTable<int,int> &table2){
+    HashTable<int,int> u_table(INITIAL_TABLE_SIZE,CUSTOM_PROBING,1);
+
+    vector<HashNode<int,int> *>* firstTable = table1.getProbeTable();
+    vector<HashNode<int,int> *>* secondTable = table2.getProbeTable();
+    int temp;
+    for(auto nodes: *firstTable){
+        if(nodes == nullptr || nodes == table1.getDeleted()) continue;
+        if(table1.search(nodes->key,temp) != -1 && table2.search(nodes->key,temp) == -1)
+            u_table.insert(nodes->key,nodes->value);
+    }
+    cout<<"Difference (A-B):";
+    u_table.printAllNodes();
+}
+
+
+int main(){
+    int n;
+    cin>>n;
+    HashTable<int,int> A(INITIAL_TABLE_SIZE,CUSTOM_PROBING,1);
+    while(n--){
+        int k;
+        cin>>k;
+        A.insert(k,k);
     }
 
+    int m;
+    cin>>m;
+    HashTable<int,int> B(INITIAL_TABLE_SIZE,CUSTOM_PROBING,2);
 
-
-    vector<CollisionMethod> methods = {CHAINING,DOUBLE_HASHING,CUSTOM_PROBING};
-
-    for(int i=0;i<3;i++){
-        if(i == 0)      cout<<"||--------Chaining-----------||\n";
-        else if(i == 1) cout<<"||--------Double Hashing-----||\n";
-        else if(i == 2) cout<<"||--------Custom Probing-----||\n";
-
-        for(int hChoice = 1; hChoice <=2; hChoice++){
-            HashTable<string,int> demoTable(INITIAL_TABLE_SIZE,methods[i],hChoice);
-            int count = 0;
-            for(auto &w:words){
-                demoTable.insert(w,count + 1);
-            }
-
-            int totalHits = 0;
-            for(auto idx:searchIdx){
-                int hits = 0;
-                demoTable.search(words[ idx ],hits);
-                totalHits += hits;
-            }
-
-            string methodName = (hChoice == 1) ? "Hash1" : "Hash2";
-            
-            cout<<methodName<<"||   Collisions: "<<demoTable.getTotalCollsions()
-                <<"  Hits: "<<  (double)    totalHits/1000   <<"\n";
-        }
-        cout<<endl;
+    while(m--){
+        int k;
+        cin>>k;
+        B.insert(k,k);
     }
 
-    return 0;
+    union_hash(A,B);
+    intersect_hash(A,B);
+    diff_hash(A,B);
 }
